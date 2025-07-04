@@ -11,6 +11,8 @@ Workflow and code used in [Lewis R. et al 2025](https://www.biorxiv.org/content/
 - [Indexing](#Indexing)
 - [Read processing and alignment](#Read-processing-and-alignment)
     - [RNA-seq](#RNA-seq)
+    - [ATAC-seq](#ATAC-seq)
+- [Citation](#Citation)
 
 # Abstract
 In most eukaryotic cells, euchromatin is localized in the nuclear interior, whereas heterochromatin is enriched at the nuclear envelope (NE). This conventional chromatin organization is established by heterochromatin tethering to the NE, however its importance for cellular homeostasis is largely unexplored. Peripheral heterochromatin localization relies on redundant NE-tethering systems. One tether is constituted by the lamin B receptor (LBR) in mammals, but the enigmatic nature of the other tethers has hampered functional analyses. Here we demonstrate that the downregulation of abundant, ubiquitous NE proteins can induce the global detachment of heterochromatin from the NE. Among these factors, we identify LBR and LAP2 as major players in bulk heterochromatin attachment to the NE in pluripotent and differentiated mammalian cells. Their loss leads to repositioning of heterochromatin to the nuclear interior, changes in chromatin accessibility, deregulation of gene expression including activation of antiviral innate immunity, and defects in cell fate determination.
@@ -25,7 +27,7 @@ The following TEtranscripts annotation files were used to identify deregulated T
 # Computational platform
 Genome indexing, read alignment and major parts of the processing for next generation sequencing data were done on [Euler HPC cluster](https://scicomp.ethz.ch/wiki/Euler) at ETH, Zurich.
 
-The modules in the code refers to [applications and libraries](https://scicomp.ethz.ch/wiki/Euler_applications_and_libraries_ubuntu) available on Euler.
+The modules in the codes below refers to [applications and libraries](https://scicomp.ethz.ch/wiki/Euler_applications_and_libraries_ubuntu) available on Euler.
 
 # Requirements
 
@@ -33,6 +35,10 @@ The modules in the code refers to [applications and libraries](https://scicomp.e
 - Bowtie2
 - Samtools
 - Cutadapt
+- Subread
+- Bedtools
+- Sambamba
+- MACS3
 - R
 
 R libraies:
@@ -42,7 +48,7 @@ R libraies:
 
 # Indexing
 
-Following is an example code showing indexing of the human genome using STAR. For mouse sample, please replace human genome and annotations with their mouse counterparts from above.
+Following is an example code showing indexing of the human genome. For mouse sample, please replace human genome and annotations with their mouse counterparts from above.
 
 
 ```bash
@@ -51,6 +57,7 @@ Following is an example code showing indexing of the human genome using STAR. Fo
 module load stack/2024-06
 module load python/3.11.6
 module load star/2.7.10b
+module load bowtie2/2.5.1-u2j3omo
 module load samtools/1.17
 module load pigz/2.7-oktqzxd
 
@@ -91,10 +98,22 @@ STAR \
 --sjdbGTFfile "$gen_in"/Homo_sapiens.GRCh38.108.gtf \
 --sjdbOverhang 99
 
+# Inde genome for bowtie2
 date +"%d-%m-%Y %T"
 echo "-------------------------"
-echo "Done indexing"
+echo "Indexing Genome using Bowtie2"
 echo "-------------------------"
+
+bowtie2-build \
+--threads "$THREADS" \
+"$gen_in"/Homo_sapiens.GRCh38.dna.primary_assembly.fa \
+"$gen_in"/Homo_sapiens.GRCh38.dna.primary_assembly
+
+date +"%d-%m-%Y %T"
+echo "-------------------------"
+echo "Indexing done!"
+echo "-------------------------"
+
 
 
 ```
@@ -239,9 +258,8 @@ featureCounts \
 awk '(NR>1)' "$dir_in"/HCT116_exon_counts_rawfile_tmp.txt > "$dir_in"/HCT116_exon_counts_rawfile.txt
 awk '(NR>1)' "$dir_in"/HCT116_biotype_counts_rawfile_tmp.txt > "$dir_in"/HCT116_biotype_counts_rawfile.txt
 
-# For HCT
-cut -f 1,7-41 "$dir_in"/HCT116_exon_counts_rawfile.txt > "$dir_in"/HCT116_exon_counts_processed.txt
-cut -f 1,7-41 "$dir_in"/HCT116_biotype_counts_rawfile.txt > "$dir_in"/HCT116_biotype_counts_processed.txt
+cut -f 1,7- "$dir_in"/HCT116_exon_counts_rawfile.txt > "$dir_in"/HCT116_exon_counts_processed.txt
+cut -f 1,7- "$dir_in"/HCT116_biotype_counts_rawfile.txt > "$dir_in"/HCT116_biotype_counts_processed.txt
 
 rm "$dir_in"/HCT116_exon_counts_rawfile_tmp.txt
 rm "$dir_in"/HCT116_biotype_counts_rawfile_tmp.txt
@@ -321,5 +339,365 @@ echo "-------------------------"
 
 ```
 
+## ATAC-seq
+The code does the following:
+- Removes Illumina adaptors from the reads and keep the reads with `-q 25`
+- Map the reads to the genome, sort by coordinates and index them
+- Remove mitochondrial reads
+- Keep only uniquely mapped reads
+- Checks fragment length distribution (QC)
+- Select reads with 100 nt length and shift the 5' and 3' ends to account for transposon dimerization before insertion
+- Call peaks on above file using MACS3
+- Filter out black listed regions from the above file.
+
+```bash
+
+module load stack/2024-06
+module load python/3.11.6
+module load bowtie2/2.5.1-u2j3omo
+module load samtools/1.17
+module load subread/2.0.6
+module load py-dnaio/0.10.0-l2umcaf
+module load py-xopen/1.6.0-o55adyx
+module load py-cutadapt/4.4-jfcyzb5
+module load openjdk/17.0.8.1_1
+module load fastqc/0.12.1
+module load r/4.4.0
+module load xz/5.4.1-hrbyxav
+module load bzip2/1.0.8-kxrmhba
+module load curl/8.4.0-s6dtj75
+module load libxml2/2.10.3-xbqziof
+module load libiconv/1.17-uiaqkl2
+module load pigz/2.7-oktqzxd
+module load bedtools2/2.31.0
 
 
+# Directories
+dir_in="/path/to/dir"
+gen_in="/path/to/dir"
+smabamba_dir="/path/to/dir/sambamba_v1.0.1"
+deeptools_dir="/path/to/dir/"
+picard_dir="/path/to/dir/picard/build/libs"
+tools_dir="/path/to/dir"
+THREADS=128
+
+# Safety first
+set -e
+
+
+# Trim reads
+for file in "$dir_in"/*_R1.fastq.gz; do
+
+    base=$(basename "$file" _R1.fastq.gz)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cutadapt working on "${base}""
+    echo "-------------------------"
+
+    cutadapt \
+    -j "$THREADS" \
+    -q 25 \
+    -m 25 \
+    -a CTGTCTCTTATACACATCT \
+    -A CTGTCTCTTATACACATCT \
+    -o "$dir_in"/${base}_qc_R1.fastq.gz \
+    -p "$dir_in"/${base}_qc_R2.fastq.gz \
+    "$dir_in"/${base}_R1.fastq.gz \
+    "$dir_in"/${base}_R2.fastq.gz \
+    1> "$dir_in"/${base}_qc_cutadapt_log.txt
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cutadapt done processing "${base}""
+    echo "-------------------------"
+
+done
+
+
+# Map with bowtie2
+for file in "$dir_in"/*qc_R1.fastq.gz; do
+
+    base=$(basename "$file" _qc_R1.fastq.gz)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bowtie2 aligning "${base}" for MACS3"
+    echo "-------------------------"
+
+    (
+        bowtie2 \
+        -t \
+        -q \
+        -p 64 \
+        --very-sensitive \
+        -x "$gen_in"/Homo_sapiens.GRCh38.dna.primary_assembly \
+        -1 "$dir_in"/${base}_qc_R1.fastq.gz \
+        -2 "$dir_in"/${base}_qc_R2.fastq.gz | \
+        samtools view \
+        -@ 64 -h -b -S - > "$dir_in"/${base}_macs3_genome_unsorted.bam
+    ) 2> "$dir_in"/${base}_macs3_genome_map_log.txt
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bowtie2 DONE aligning "${base}" for MACS3"
+    echo "-------------------------"
+
+    
+
+    echo "-------------------------"
+    echo "Samtool sorting: "${base}_macs3_genome_unsorted.bam""
+    echo "-------------------------"
+
+    # Sort the BAM file
+    samtools sort \
+    -@ "$THREADS" \
+    -o "$dir_in"/${base}_macs3_genome_sorted.bam "$dir_in"/${base}_macs3_genome_unsorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool DONE sorting: "${base}_macs3_genome_unsorted.bam""
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_macs3_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool DONE indexing: "${base}_macs3_genome_sorted.bam""
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Cleaning up: unsorted bams"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_genome_unsorted.bam
+
+done
+
+date +"%d-%m-%Y %T"
+echo "-------------------------"
+echo "Bowtie2 and SAMtools done!"
+echo "-------------------------"
+
+echo "-------------------------"
+echo "Processing BAMs for MACS3!"
+echo "-------------------------"
+
+
+# Remove MT reads
+for file in "$dir_in"/*_macs3_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "SAMtools working on "${base}""
+    echo "-------------------------"
+
+    samtools idxstats \
+    "$dir_in"/${base}_macs3_genome_sorted.bam | \
+    cut -f1 | \
+    grep -v MT | \
+    xargs samtools view \
+    --threads 54 \
+    -b \
+    "$dir_in"/${base}_macs3_genome_sorted.bam > "$dir_in"/${base}_macs3_nomt_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "SAMtools done processing $base"
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_nomt_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ 64 \
+    "$dir_in"/${base}_macs3_nomt_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cleaning up: bams with MT reads"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_genome_sorted.bam*
+
+done
+
+# Remove duplicates and keep only uniquely mapped reads
+for file in "$dir_in"/*_macs3_nomt_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_nomt_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Sambamba working on "${base}""
+    echo "-------------------------"
+
+    "$smabamba_dir"/sambamba_v1.0.1 view \
+    -h \
+    -t "$THREADS" \
+    -f bam \
+    -F "[XS] == null and not unmapped and not duplicate" \
+    "$dir_in"/${base}_macs3_nomt_genome_sorted.bam > "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam
+
+    echo "-------------------------"
+    echo "Sambamba done processing "${base}""
+    echo "-------------------------"
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_nomt_unique_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cleaning up: bams with duplicate reads"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_nomt_genome_sorted.bam*
+
+done
+
+# Keep only nucleosome free regions (< 100 bp reads) and shift reads
+
+source "$deeptools_dir"/deeptools/bin/activate
+
+for file in "$dir_in"/*_macs3_nomt_unique_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_nomt_unique_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Deeptools working on "${base}""
+    echo "-------------------------"
+
+    alignmentSieve \
+    --numberOfProcessors "$THREADS" \
+    --minMappingQuality 25 \
+    --maxFragmentLength 100 \
+    --ATACshift \
+    --BED \
+    --filterMetrics log.txt \
+    --bam "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam \
+    --outFile "$dir_in"/${base}_macs3_input.bed  
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Deeptools done processing "${base}""
+    echo "-------------------------"
+
+
+done
+
+deactivate
+
+
+# Fragment length distribution
+for file in "$dir_in"/*_macs3_nomt_unique_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_nomt_unique_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Picard working on "${base}""
+    echo "-------------------------"
+
+    java \
+    -Xmx64G \
+    -jar "$picard_dir"/picard.jar \
+    CollectInsertSizeMetrics \
+    -M 0.5 \
+    -I "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam \
+    -O "$dir_in"/${base}_frag_len_stats.txt \
+    -H "$dir_in"/${base}_frag_len.pdf
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Picard done processing "${base}""
+    echo "-------------------------"
+
+
+done
+
+# Call peaks
+
+source "$tools_dir"/macs3/bin/activate
+
+for file in "$dir_in"/*_macs3_input.bed; do
+
+    base=$(basename "$file" _macs3_input.bed)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "MACS3 working on "${base}""
+    echo "-------------------------"
+
+    macs3 \
+    callpeak \
+    --call-summits \
+    --nomodel \
+    --nolambda \
+    --gsize hs \
+    --keep-dup all \
+    --format BEDPE \
+    --qvalue 0.05 \
+    --outdir "$dir_in"/ \
+    --treatment "$file" \
+    --name "$dir_in"/${base}_macs3 \
+    2> "$dir_in"/${base}_macs3_log.txt
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "MACS3 done processing "${base}""
+    echo "-------------------------"
+
+
+done
+
+deactivate
+
+# Filter-out blaclisted regions
+
+for file in "$dir_in"/*_all_macs3_peaks.narrowPeak; do
+
+    base=$(basename "$file" _all_macs3_peaks.narrowPeak)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bedtools working on "${base}""
+    echo "-------------------------"
+
+    bedtools intersect \
+    -v \
+    -a "$file" \
+    -b "$gen_in"/hg38_blacklist_v2_ps.bed \
+    > "$dir_in"/${base}_all_macs3_filtered_peaks.bed 
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bedtools done processing "${base}""
+    echo "-------------------------"
+
+done
+
+```
+
+# Citation
+LBR and LAP2 mediate heterochromatin tethering to the nuclear periphery to preserve genome homeostasis
+*Renard Lewis, Virginia Sinigiani, Krisztian Koos, Cristiana Bersaglieri, Caroline Ashiono, Raffaella Santoro, Constance Ciaudo, Peter Horvath, Puneet Sharma, Ulrike Kutay*
+bioRxiv 2024.12.23.628302; doi: [https://doi.org/10.1101/2024.12.23.628302](https://doi.org/10.1101/2024.12.23.628302)
