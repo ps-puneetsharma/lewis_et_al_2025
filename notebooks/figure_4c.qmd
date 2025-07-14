@@ -1,0 +1,118 @@
+---
+title: "Figure 4C"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+```
+
+
+```{r}
+in_dir <- "../data/figure_4c_and_4d/"
+
+make_count_table <- function(sample_name) {
+  in_file <- paste(sample_name, "_LFC1_DESeq2_apeglm_res.csv", sep = "")
+
+  df <- read_csv(paste(in_dir, sample_name, "/", in_file, sep = "")) |>
+    mutate(
+      sample_name = sample_name |> str_remove_all("_vs_HCT116_WT"),
+      regulation_level = case_when(
+        (log2FoldChange >= 1 & log2FoldChange < 2 & padj < 0.05) ~ "positive_1_2",
+        (log2FoldChange >= 2 & padj < 0.05) ~ "positive_2_above",
+        (log2FoldChange <= -1 & log2FoldChange > -2 & padj < 0.05) ~ "negative_1_2",
+        (log2FoldChange <= -2 & padj < 0.05) ~ "negative_2_below",
+        .default = "Unchanged"
+      )
+    ) |>
+    drop_na(padj)
+
+  filtered_df <- df |>
+    filter(
+      gene_symbol %in% c(
+        "LBR", "TMPO", "LMNA"
+      )
+    )
+
+  # Plot
+
+  custom_col <- c(
+    "positive_2_above" = "#481567FF",
+    "positive_1_2" = "#33638DFF",
+    "Unchanged" = "#999999",
+    "negative_1_2" = "#3CBB75FF",
+    "negative_2_below" = "#B8DE29FF"
+  )
+
+  plt_labelled <- ggplot(
+    df,
+    aes(
+      x = log2FoldChange,
+      y = -log10(padj),
+      color = regulation_level
+    )
+  ) +
+    geom_point(size = 1) +
+    geom_vline(
+      xintercept = c(-1, 1),
+      color = "#252525",
+      linetype = "dotted"
+    ) +
+    geom_vline(
+      xintercept = c(-2, 2),
+      color = "#252525",
+      linetype = "dotted"
+    ) +
+    geom_hline(
+      yintercept = 1.301,
+      color = "#252525",
+      linetype = "dotted"
+    ) +
+    geom_text_repel(
+      data = filtered_df,
+      aes(label = gene_symbol),
+      size = 3,
+      box.padding = 0.5,
+      max.overlaps = 30,
+      show.legend = FALSE
+    ) +
+    scale_color_manual(values = custom_col) +
+    labs(
+      x = expression("log"[2] * "(fold change)"),
+      y = expression("-log"[10] * "(adjusted p-value)"),
+      color = "Regulation \nlevel",
+      title = sample_name
+    ) +
+    theme_bw()
+
+  plt_labelled
+}
+```
+
+
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+sample_list <- c(
+  "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+)
+
+map(sample_list, make_count_table)
+```
+
+
+```{r}
+sessionInfo()
+```
