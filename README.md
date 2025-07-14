@@ -12,6 +12,7 @@ Workflow and code used in [Lewis R. et al 2025](https://www.biorxiv.org/content/
 - [Read processing and alignment](#Read-processing-and-alignment)
     - [RNA-seq](#RNA-seq)
     - [ATAC-seq](#ATAC-seq)
+    - [ChIP-seq](#ChIP-seq)
 - [Citation](#Citation)
 
 # Abstract
