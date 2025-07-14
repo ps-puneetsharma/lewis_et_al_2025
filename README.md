@@ -340,6 +340,7 @@ echo "-------------------------"
 ```
 
 ## ATAC-seq
+
 The code does the following:
 - Removes Illumina adaptors from the reads and keep the reads with `-q 25`
 - Map the reads to the genome, sort by coordinates and index them
@@ -696,6 +697,281 @@ for file in "$dir_in"/*_all_macs3_peaks.narrowPeak; do
 done
 
 ```
+
+## ChIP-seq
+
+The code does the following:
+- Removes Illumina adaptors from the reads and keep the reads with `-q 25`
+- Map the reads to the genome, sort by coordinates and index them
+- Remove mitochondrial reads
+- Keep only uniquely mapped reads
+- Remove blacklisted region from the BAM files
+- Sort the above BAM files based on coordinates and index them
+
+
+```bash
+
+module load stack/2024-06
+module load python/3.11.6
+module load bowtie2/2.5.1-u2j3omo
+module load samtools/1.17
+module load subread/2.0.6
+module load py-dnaio/0.10.0-l2umcaf
+module load py-xopen/1.6.0-o55adyx
+module load py-cutadapt/4.4-jfcyzb5
+module load openjdk/17.0.8.1_1
+module load fastqc/0.12.1
+module load r/4.4.0
+module load xz/5.4.1-hrbyxav
+module load bzip2/1.0.8-kxrmhba
+module load curl/8.4.0-s6dtj75
+module load libxml2/2.10.3-xbqziof
+module load libiconv/1.17-uiaqkl2
+module load bedtools2/2.31.0
+module load pigz/2.7-oktqzxd
+
+# Directories
+dir_in="/path/to/dir"
+gen_in="/path/to/dir"
+smabamba_dir="/path/to/dir/sambamba_v1.0.1"
+tools_dir="/path/to/dir/"
+THREADS=128
+
+# Safety first
+set -e
+
+
+# Trim reads
+for file in "$dir_in"/*_R1.fastq.gz; do
+
+    base=$(basename "$file" _R1.fastq.gz)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cutadapt working on "${base}""
+    echo "-------------------------"
+
+    cutadapt \
+    -j "$THREADS" \
+    -q 25 \
+    -m 25 \
+    --poly-a \
+    -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+    -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+    -o "$dir_in"/${base}_qc_R1.fastq.gz \
+    -p "$dir_in"/${base}_qc_R2.fastq.gz \
+    "$dir_in"/${base}_R1.fastq.gz \
+    "$dir_in"/${base}_R2.fastq.gz \
+    1> "$dir_in"/${base}_qc_cutadapt_log.txt
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cutadapt done processing "${base}""
+    echo "-------------------------"
+
+done
+
+
+# Map with bowtie2
+for file in "$dir_in"/*qc_R1.fastq.gz; do
+
+    base=$(basename "$file" _qc_R1.fastq.gz)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bowtie2 aligning "${base}" for MACS3"
+    echo "-------------------------"
+
+    (
+        bowtie2 \
+        -t \
+        -q \
+        -p 64 \
+        --very-sensitive \
+        -x "$gen_in"/Homo_sapiens.GRCh38.dna.primary_assembly \
+        -1 "$dir_in"/${base}_qc_R1.fastq.gz \
+        -2 "$dir_in"/${base}_qc_R2.fastq.gz | \
+        samtools view \
+        -@ 64 -h -b -S - > "$dir_in"/${base}_macs3_genome_unsorted.bam
+    ) 2> "$dir_in"/${base}_macs3_genome_map_log.txt
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bowtie2 DONE aligning "${base}" for MACS3"
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Samtool sorting: "${base}_macs3_genome_unsorted.bam""
+    echo "-------------------------"
+
+    # Sort the BAM file
+    samtools sort \
+    -@ "$THREADS" \
+    -o "$dir_in"/${base}_macs3_genome_sorted.bam "$dir_in"/${base}_macs3_genome_unsorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool DONE sorting: "${base}_macs3_genome_unsorted.bam""
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_macs3_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool DONE indexing: "${base}_macs3_genome_sorted.bam""
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Cleaning up: unsorted bams"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_genome_unsorted.bam
+
+done
+
+date +"%d-%m-%Y %T"
+echo "-------------------------"
+echo "Bowtie2 and SAMtools done!"
+echo "-------------------------"
+
+echo "-------------------------"
+echo "Processing BAMs for MACS3!"
+echo "-------------------------"
+
+
+# Remove MT reads
+for file in "$dir_in"/*_macs3_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "SAMtools working on "${base}""
+    echo "-------------------------"
+
+    samtools idxstats \
+    "$dir_in"/${base}_macs3_genome_sorted.bam | \
+    cut -f1 | \
+    grep -v MT | \
+    xargs samtools view \
+    --threads "$THREADS" \
+    -b \
+    "$dir_in"/${base}_macs3_genome_sorted.bam > "$dir_in"/${base}_macs3_nomt_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "SAMtools done processing $base"
+    echo "-------------------------"
+
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_nomt_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_macs3_nomt_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cleaning up: bams with MT reads"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_genome_sorted.bam*
+
+done
+
+# Remove duplicates and keep only uniquely mapped reads
+for file in "$dir_in"/*_macs3_nomt_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_nomt_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Sambamba working on "${base}""
+    echo "-------------------------"
+
+    "$smabamba_dir"/sambamba_v1.0.1 view \
+    -h \
+    -t "$THREADS" \
+    -f bam \
+    -F "[XS] == null and not unmapped and not duplicate" \
+    "$dir_in"/${base}_macs3_nomt_genome_sorted.bam > "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam
+
+    echo "-------------------------"
+    echo "Sambamba done processing "${base}""
+    echo "-------------------------"
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_macs3_nomt_unique_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Cleaning up: bams with duplicate reads"
+    echo "-------------------------"
+
+    rm "$dir_in"/${base}_macs3_nomt_genome_sorted.bam*
+
+done
+
+# Remove blacklisted regions
+for file in "$dir_in"/*_macs3_nomt_unique_genome_sorted.bam; do
+
+    base=$(basename "$file" _macs3_nomt_unique_genome_sorted.bam)
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bedtools working on "${base}""
+    echo "-------------------------"
+
+    bedtools intersect \
+    -v \
+    -abam "$dir_in"/${base}_macs3_nomt_unique_genome_sorted.bam \
+    -b "$gen_in"/hg38_blacklist_v2_ps.bed | \
+    samtools sort \
+    -@ "$THREADS" \
+    -o "$dir_in"/${base}_nomt_noblklstd_unique_genome_sorted.bam -
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Bedtools DONE working on "${base}""
+    echo "-------------------------"
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool indexing: "${base}_nomt_noblklstd_unique_genome_sorted.bam""
+    echo "-------------------------"
+
+    # Index the BAM file
+    samtools index \
+    -@ "$THREADS" \
+    "$dir_in"/${base}_nomt_noblklstd_unique_genome_sorted.bam
+
+    date +"%d-%m-%Y %T"
+    echo "-------------------------"
+    echo "Samtool DONE indexing: "${base}_nomt_noblklstd_unique_genome_sorted.bam""
+    echo "-------------------------"
+
+
+done
+
+
+```
+
 
 # Citation
 LBR and LAP2 mediate heterochromatin tethering to the nuclear periphery to preserve genome homeostasis
