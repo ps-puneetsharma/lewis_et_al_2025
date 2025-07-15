@@ -1,0 +1,135 @@
+---
+title: "Figure 5B"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+      
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(eulerr)
+```
+
+
+```{r}
+atac_type <- "nfr"
+
+in_dir <- paste0("../data/figure_5a_5b_5c/")
+ATAC_LFC <- 1
+
+sample_name_1 <- "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT"
+sample_name_2 <- "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+
+# For decreased, change this to "Decreased"
+reg_level <- "Increased"
+
+df_1_name <- sample_name_1 |> str_replace("vs_HCT116_WT", reg_level)
+df_2_name <- sample_name_2 |> str_replace("vs_HCT116_WT", reg_level)
+```
+
+
+```{r}
+df_1 <- read_csv(
+  paste0(in_dir, sample_name_1, "/", sample_name_1, "_LFC", as.character(ATAC_LFC), "_DESeq2_apeglm_res.csv")
+)
+
+head(df_1)
+```
+
+```{r}
+df_2 <- read_csv(
+  paste0(in_dir, sample_name_2, "/", sample_name_2, "_LFC", as.character(ATAC_LFC), "_DESeq2_apeglm_res.csv")
+)
+
+head(df_2)
+```
+
+# Function
+
+```{r}
+# Extract DEGs
+get_deg_fun <- function(input_df, reg_level) {
+  tmp_degs <- input_df |>
+    dplyr::filter(
+      accessibility == reg_level
+    ) |>
+    dplyr::select(peak_id)
+
+
+  tmp_degs
+}
+```
+
+# Data
+
+```{r}
+df_1_degs <- get_deg_fun(df_1, reg_level)
+df_2_degs <- get_deg_fun(df_2, reg_level)
+```
+
+```{r}
+merged_df <- inner_join(
+  df_1_degs, df_2_degs,
+  by = "peak_id"
+) |>
+  distinct(peak_id, .keep_all = TRUE)
+
+head(merged_df)
+```
+
+
+```{r}
+# Euler matrix
+euler_matrix <- c(
+  nrow(df_1_degs) - nrow(merged_df),
+  nrow(df_2_degs) - nrow(merged_df),
+  nrow(merged_df)
+)
+
+# Names
+df_1_2_intersect <- paste0(df_1_name, "&", df_2_name)
+names(euler_matrix) <- c(df_1_name, df_2_name, df_1_2_intersect)
+
+# Create fit
+fit_for_plt <- euler(euler_matrix)
+
+# Plot
+custom_col <- c("#c36128", "#a1414f", "#f5f5f5")
+names(custom_col) <- c(df_1_name, df_2_name, df_1_2_intersect)
+```
+
+# Plot
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+plt <- plot(
+  fit_for_plt,
+  fill = custom_col,
+  labels = list(
+    font = 4,
+    fontsize = 12
+  ),
+  quantities = list(
+    type = c("percent", "counts"),
+    fontsize = 12
+  )
+)
+
+plt
+```
+
+
+```{r}
+sessionInfo()
+```
