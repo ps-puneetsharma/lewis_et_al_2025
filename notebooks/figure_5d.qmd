@@ -1,0 +1,167 @@
+---
+title: "Figure 5D"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+```{r}
+rna_dir <- "../data/figure_4c_and_4d/"
+atac_dir <- "../data/figure_5d/"
+outfile_name <- "dko_tko_vs_wt"
+
+RNA_LFC <- 1
+ATAC_LFC <- 1
+```
+
+# Function
+
+```{r}
+merge_atac_and_rna <- function(comp_name) {
+  if (comp_name == "tko_vs_wt") {
+    sample_name <- "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+    gen_name <- "TKO vs WT"
+  } else if (comp_name == "dko_vs_wt") {
+    sample_name <- "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT"
+    gen_name <- "DKO vs WT"
+  }
+
+  rna_df <- read_csv(
+    paste(rna_dir, sample_name, "/", sample_name, "_LFC", as.character(RNA_LFC), "_DESeq2_apeglm_res.csv", sep = "")
+  ) |>
+    select(
+      gene_id, log2FoldChange, regulation_level
+    )
+
+  atac_df <- read_csv(
+    paste(atac_dir, sample_name, "/", sample_name, "_LFC", as.character(ATAC_LFC), "_DESeq2_apeglm_res_nfr_promoters_only.csv", sep = "")
+  ) |>
+    filter(
+      gene_type == "protein_coding"
+    ) |>
+    select(
+      gene_id, log2FoldChange, accessibility
+    )
+
+
+  merged_df <- inner_join(
+    rna_df, atac_df,
+    by = c("gene_id"),
+    suffix = c("_rna", "_atac")
+  ) |>
+    select(
+      gene_id, log2FoldChange_rna, log2FoldChange_atac, regulation_level, accessibility
+    ) |>
+    rename(
+      rna = log2FoldChange_rna,
+      atac = log2FoldChange_atac
+    ) |>
+    mutate(
+      genotype = gen_name
+    )
+
+  merged_df
+}
+```
+
+
+# Data
+
+```{r}
+comp_names <- c(
+  "tko_vs_wt",
+  "dko_vs_wt"
+)
+
+combined_df <- map(comp_names, merge_atac_and_rna) |>
+  list_rbind() |>
+  mutate(
+    status = case_when(
+      (accessibility != "Unchanged" & regulation_level != "Unchanged") ~ "sig_changed",
+      .default = "unchanged"
+    )
+  )
+
+head(combined_df)
+```
+
+# Plot
+
+```{r}
+#| fig-height: 6
+#| fig-width: 6
+
+custom_cols <- c(
+  "sig_changed" = "#c51b8a",
+  "unchanged" = "#999999"
+)
+
+plt <- ggplot(
+  combined_df,
+  aes(
+    x = atac,
+    y = rna
+  )
+) +
+  geom_point(
+    aes(
+      x = atac,
+      y = rna,
+      color = status
+    ),
+    show.legend = FALSE,
+    alpha = 0.5
+  ) +
+  geom_smooth(
+    method = lm,
+    se = TRUE
+  ) +
+  stat_cor(
+    method = "spearman",
+    show.legend = FALSE
+  ) +
+  coord_cartesian(
+    xlim = c(-5, 5),
+    ylim = c(-5, 5)
+  ) +
+  geom_hline(yintercept = c(-1, 1), linetype = "dotted", col = "black") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dotted", col = "black") +
+  scale_color_manual(values = custom_cols) +
+  facet_wrap(
+    ~genotype
+  ) +
+  labs(
+    x = expression("log"[2] * "(fold change) ATAC-seq"),
+    y = expression("log"[2] * "(fold change) RNA-seq")
+  ) +
+  theme_bw()
+
+plt
+```
+
+Note: to view the R and p-value, please comment out the `coord_cartesian`
+
+```{r}
+count_df <- combined_df |>
+  count(genotype)
+
+count_df
+```
+
+
+```{r}
+sessionInfo()
+```
