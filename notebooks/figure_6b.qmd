@@ -1,0 +1,176 @@
+---
+title: "Figure 6B"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+chip_dir <- "../data/figure_6b_and_6c/"
+rna_dir <- "../data/figure_4c_and_4d/"
+mod_name <- "h3k27me3"
+RNA_LFC <- 2
+outfile_name <- paste0("hct116_", mod_name, "_dko_tko_chip_x_rna_h3k27me3_status")
+```
+
+# Function
+
+```{r}
+process_data <- function(comp_name) {
+  if (comp_name == "tko_vs_wt") {
+    sample_name <- "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+    gen_name <- "TKO vs WT"
+  } else if (comp_name == "dko_vs_wt") {
+    sample_name <- "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT"
+    gen_name <- "DKO vs WT"
+  }
+
+  # ChIP data
+  chip_df <- read_csv(
+    paste0(chip_dir, comp_name, "/hct116_", comp_name, "_", mod_name, "_ens_canon_promoter_only.csv")
+  ) |>
+    select(
+      peak_id, gene_id, gene_symbol, gene_type, logFC, FDR
+    ) |>
+    mutate(
+      db_status = case_when(
+        (logFC >= 1 & FDR <= 0.05) ~ "increased",
+        (logFC <= -1 & FDR <= 0.05) ~ "decreased",
+        .default = "unchanged"
+      )
+    )
+
+  # RNA-seq data
+  rna_df <- read_csv(
+    paste(rna_dir, sample_name, "/", sample_name, "_LFC1_DESeq2_apeglm_res.csv", sep = "")
+  ) |>
+    mutate(
+      regulation_level = case_when(
+        (log2FoldChange > RNA_LFC & padj < 0.05) ~ "Upregulated",
+        (log2FoldChange < -RNA_LFC & padj < 0.05) ~ "Downregulated",
+        .default = "Unchanged"
+      )
+    ) |>
+    select(
+      gene_id, log2FoldChange, padj, regulation_level
+    )
+
+
+  # Merge data
+  mod_df <- inner_join(
+    chip_df, rna_df,
+    by = c("gene_id"),
+    suffix = c("_chip", "_rna")
+  ) |>
+    mutate(
+      mod_type = mod_name,
+      genotype = gen_name
+    ) |>
+    select(
+      genotype, regulation_level, db_status, mod_type
+    )
+
+  mod_df
+}
+```
+
+# Data
+
+```{r}
+comp_names <- c(
+  "dko_vs_wt",
+  "tko_vs_wt"
+)
+
+combined_df <- map(comp_names, process_data) |>
+  list_rbind() |>
+  count(
+    genotype, regulation_level, db_status, mod_type,
+    name = "num_genes"
+  ) |>
+  mutate(
+    genotype = str_remove(genotype, " vs WT")
+  )
+
+head(combined_df)
+```
+
+```{r}
+combined_df$db_status <- factor(
+  combined_df$db_status,
+  levels = c(
+    "increased",
+    "unchanged",
+    "decreased"
+  )
+)
+```
+
+# Plot
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+
+# Colors
+custom_cols <- c(
+  "increased" = "#404788FF",
+  "unchanged" = "#999999",
+  "decreased" = "#73D055FF"
+)
+
+plt <- ggplot(
+  combined_df,
+  aes(
+    x = genotype,
+    y = num_genes,
+    fill = db_status
+  )
+) +
+  geom_bar(
+    position = "fill",
+    stat = "identity"
+  ) +
+  scale_fill_manual(values = custom_cols) +
+  geom_text(
+    aes(
+      x = genotype,
+      y = num_genes,
+      label = num_genes
+    ),
+    stat = "identity",
+    position = position_fill(vjust = 0.5),
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "Fraction of genes",
+    fill = "H3K27me3 status"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14),
+  ) +
+  facet_wrap(
+    ~regulation_level
+  )
+
+plt
+```
+
+
+```{r}
+sessionInfo()
+```
