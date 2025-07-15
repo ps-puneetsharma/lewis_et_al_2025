@@ -1,0 +1,163 @@
+---
+title: "Figure 5A"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+LFC <- 1
+
+in_dir <- "../data/figure_5a_5b_5c/"
+```
+
+# Function
+
+```{r}
+make_master_deg_df <- function(sample_name) {
+
+  nfr_file <- paste(in_dir, sample_name, "/", sample_name, "_LFC", LFC, "_DESeq2_apeglm_res.csv", sep = "")
+
+  nfr_df <- read_csv(
+    nfr_file
+  ) |>
+    mutate(
+      genotype = sample_name,
+      atac_type = "nfr"
+    )
+
+  nfr_df
+}
+```
+
+
+# Data
+
+
+```{r}
+sample_names <- c(
+  "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+)
+
+combined_df <- map(sample_names, make_master_deg_df) |>
+  list_rbind() |>
+  mutate(
+    genotype = str_remove(genotype, "_vs_HCT116_WT")
+  )
+
+head(combined_df)
+```
+
+```{r}
+colnames(combined_df)
+```
+
+```{r}
+unique(combined_df$peak_annotation_general)
+```
+
+```{r}
+unique(combined_df$gene_type)
+```
+
+```{r}
+accessibility_df <- combined_df |>
+  count(
+    genotype,
+    accessibility,
+    atac_type,
+    name = "num_peaks"
+  )
+
+head(accessibility_df)
+```
+
+```{r}
+# Factors
+accessibility_df$accessibility <- factor(
+  accessibility_df$accessibility,
+  levels = c(
+    "Increased",
+    "Unchanged",
+    "Decreased"
+  )
+)
+```
+
+
+# Plot
+
+```{r}
+# Colors
+reg_level_cols <- c(
+  "Increased" = "#404788FF",
+  "Unchanged" = "#999999",
+  "Decreased" = "#73D055FF"
+)
+
+```
+
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+accessibility_plt <- ggplot(
+  accessibility_df,
+  aes(
+    x = genotype,
+    y = num_peaks,
+    fill = accessibility
+  )
+) +
+  geom_bar(
+    position = "fill",
+    stat = "identity"
+  ) +
+  geom_text(
+    aes(
+      x = genotype,
+      y = num_peaks,
+      label = num_peaks
+    ),
+    position = position_fill(vjust = 0.5),
+    stat = "identity",
+    size = 5
+  ) +
+  scale_fill_manual(values = reg_level_cols) +
+  labs(
+    x = "",
+    y = "Number of peaks (proportion)",
+    fill = "Accessibility"
+  ) +
+  facet_wrap(
+    ~atac_type
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    strip.text.x = element_text(size = 12),
+    strip.text.y = element_text(size = 12),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+accessibility_plt
+```
+
+```{r}
+sessionInfo()
+```
