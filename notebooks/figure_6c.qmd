@@ -18,7 +18,7 @@ library(tidyverse)
 ```
 
 ```{r}
-chip_dir <- "../data/figure_6b_and_6c/"
+chip_dir <- "../data/figure_6b_6c_6d/"
 mod_name <- "h3k27me3"
 ```
 

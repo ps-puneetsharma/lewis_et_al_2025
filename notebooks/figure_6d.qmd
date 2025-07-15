@@ -1,5 +1,5 @@
 ---
-title: "Figure 6B"
+title: "Figure 6D"
 author: "Puneet Sharma"
 format:
   html:
@@ -15,14 +15,14 @@ format:
 
 ```{r}
 library(tidyverse)
+library(ggpubr)
 ```
 
 ```{r}
 chip_dir <- "../data/figure_6b_6c_6d/"
 rna_dir <- "../data/figure_4c_and_4d/"
 mod_name <- "h3k27me3"
-RNA_LFC <- 2
-outfile_name <- paste0("hct116_", mod_name, "_dko_tko_chip_x_rna_h3k27me3_status")
+RNA_LFC <- 1
 ```
 
 # Function
@@ -37,7 +37,6 @@ process_data <- function(comp_name) {
     gen_name <- "DKO vs WT"
   }
 
-  # ChIP data
   chip_df <- read_csv(
     paste0(chip_dir, comp_name, "/hct116_", comp_name, "_", mod_name, "_ens_canon_promoter_only.csv")
   ) |>
@@ -52,37 +51,23 @@ process_data <- function(comp_name) {
       )
     )
 
-  # RNA-seq data
   rna_df <- read_csv(
-    paste(rna_dir, sample_name, "/", sample_name, "_LFC1_DESeq2_apeglm_res.csv", sep = "")
+    paste(rna_dir, sample_name, "/", sample_name, "_LFC", as.character(RNA_LFC), "_DESeq2_apeglm_res.csv", sep = "")
   ) |>
-    mutate(
-      regulation_level = case_when(
-        (log2FoldChange > RNA_LFC & padj < 0.05) ~ "Upregulated",
-        (log2FoldChange < -RNA_LFC & padj < 0.05) ~ "Downregulated",
-        .default = "Unchanged"
-      )
-    ) |>
     select(
       gene_id, log2FoldChange, padj, regulation_level
     )
 
-
-  # Merge data
-  mod_df <- inner_join(
+  merged_df <- inner_join(
     chip_df, rna_df,
     by = c("gene_id"),
     suffix = c("_chip", "_rna")
   ) |>
     mutate(
-      mod_type = mod_name,
       genotype = gen_name
-    ) |>
-    select(
-      genotype, regulation_level, db_status, mod_type
     )
 
-  mod_df
+  merged_df
 }
 ```
 
@@ -96,80 +81,79 @@ comp_names <- c(
 
 combined_df <- map(comp_names, process_data) |>
   list_rbind() |>
-  count(
-    genotype, regulation_level, db_status, mod_type,
-    name = "num_genes"
-  ) |>
   mutate(
-    genotype = str_remove(genotype, " vs WT")
+    status = case_when(
+      (db_status != "unchanged" & regulation_level != "Unchanged") ~ "sig_changed",
+      .default = "unchanged"
+    )
   )
 
 head(combined_df)
-```
-
-```{r}
-combined_df$db_status <- factor(
-  combined_df$db_status,
-  levels = c(
-    "increased",
-    "unchanged",
-    "decreased"
-  )
-)
 ```
 
 # Plot
 
 ```{r}
 #| fig-width: 8
-#| fig-height: 5
+#| fig-height: 8
 
-# Colors
 custom_cols <- c(
-  "increased" = "#404788FF",
-  "unchanged" = "#999999",
-  "decreased" = "#73D055FF"
+  "sig_changed" = "#c51b8a",
+  "unchanged" = "#999999"
 )
 
 plt <- ggplot(
   combined_df,
   aes(
-    x = genotype,
-    y = num_genes,
-    fill = db_status
+    x = logFC,
+    y = log2FoldChange
   )
 ) +
-  geom_bar(
-    position = "fill",
-    stat = "identity"
-  ) +
-  scale_fill_manual(values = custom_cols) +
-  geom_text(
+  geom_point(
     aes(
-      x = genotype,
-      y = num_genes,
-      label = num_genes
+      x = logFC,
+      y = log2FoldChange,
+      color = status
     ),
-    stat = "identity",
-    position = position_fill(vjust = 0.5),
-    size = 4
+    show.legend = FALSE,
+    alpha = 0.5
+  ) +
+  geom_smooth(
+    method = lm,
+    se = TRUE,
+    color = "black"
+  ) +
+  stat_cor(
+    method = "spearman",
+    show.legend = FALSE,
+    label.x = -5,
+    label.y = -5
+  ) +
+  coord_cartesian(
+    xlim = c(-5, 5),
+    ylim = c(-5, 5)
+  ) +
+  geom_hline(yintercept = c(-1, 1), linetype = "dotted", col = "black") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dotted", col = "black") +
+  scale_color_manual(values = custom_cols) +
+  facet_wrap(
+    ~genotype
   ) +
   labs(
-    x = "",
-    y = "Fraction of genes",
-    fill = "H3K27me3 status"
+    x = expression("log"[2] * "(fold change) ChIP-seq"),
+    y = expression("log"[2] * "(fold change) RNA-seq")
   ) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 14),
-  ) +
-  facet_wrap(
-    ~regulation_level
-  )
+  theme_bw()
 
 plt
 ```
 
+```{r}
+count_df <- combined_df |>
+  count(genotype)
+
+count_df
+```
 
 ```{r}
 sessionInfo()
