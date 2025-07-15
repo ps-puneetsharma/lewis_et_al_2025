@@ -1,0 +1,101 @@
+---
+title: "Figure 8D"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+```
+
+# Function
+
+```{r}
+in_dir <- "../data/figure_8d/"
+
+make_count_table <- function(sample_name) {
+  in_file <- paste(sample_name, "_LFC1_DESeq2_apeglm_res.csv", sep = "")
+
+  df <- read_csv(paste(in_dir, sample_name, "/", in_file, sep = "")) |>
+    drop_na(padj)
+
+  filtered_df <- df |>
+    filter(
+      gene_symbol %in% c(
+        "Lbr", "Tmpo", "Lmna"
+      )
+    )
+
+  # Plot
+
+  custom_col <- c(
+    "Upregulated" = "#404788FF",
+    "Unchanged" = "#999999",
+    "Downregulated" = "#73D055FF"
+  )
+
+  plt_labelled <- ggplot(
+    df,
+    aes(
+      x = log2FoldChange,
+      y = -log10(padj),
+      color = regulation_level
+    )
+  ) +
+    geom_point(size = 1) +
+    geom_vline(
+      xintercept = c(-1, 1),
+      color = "#252525",
+      linetype = "dotted"
+    ) +
+    geom_hline(
+      yintercept = 1.301,
+      color = "#252525",
+      linetype = "dotted"
+    ) +
+    geom_text_repel(
+      data = filtered_df,
+      aes(label = gene_symbol),
+      size = 3,
+      box.padding = 0.5,
+      max.overlaps = 30,
+      show.legend = FALSE
+    ) +
+    scale_color_manual(values = custom_col) +
+    labs(
+      x = expression("log"[2] * "(fold change)"),
+      y = expression("-log"[10] * "(adjusted p-value)"),
+      color = "Regulation \nlevel",
+      title = sample_name
+    ) +
+    theme_bw()
+
+
+  plt_labelled
+}
+```
+
+# Plot
+
+```{r}
+sample_list <- c(
+  "mESC_LBR_TMPO_KO_vs_mESC_WT",
+  "mESC_LBR_TMPO_LMNA_KO_vs_mESC_WT"
+)
+
+map(sample_list, make_count_table)
+```
+
+```{r}
+sessionInfo()
+```
