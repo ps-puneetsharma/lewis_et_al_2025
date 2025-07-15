@@ -5,6 +5,7 @@ Workflow and code used in [Lewis R. et al 2025](https://www.biorxiv.org/content/
 
 # Table of contents
 - [Abstract](#Abstract)
+- [Nomenclature](#Nomenclature)
 - [Reference genomes and annotations](#Reference-genomes-and-annotations)
 - [Computational platform](#Computational-platform)
 - [Requirements](#Requirements)
@@ -17,6 +18,15 @@ Workflow and code used in [Lewis R. et al 2025](https://www.biorxiv.org/content/
 
 # Abstract
 In most eukaryotic cells, euchromatin is localized in the nuclear interior, whereas heterochromatin is enriched at the nuclear envelope (NE). This conventional chromatin organization is established by heterochromatin tethering to the NE, however its importance for cellular homeostasis is largely unexplored. Peripheral heterochromatin localization relies on redundant NE-tethering systems. One tether is constituted by the lamin B receptor (LBR) in mammals, but the enigmatic nature of the other tethers has hampered functional analyses. Here we demonstrate that the downregulation of abundant, ubiquitous NE proteins can induce the global detachment of heterochromatin from the NE. Among these factors, we identify LBR and LAP2 as major players in bulk heterochromatin attachment to the NE in pluripotent and differentiated mammalian cells. Their loss leads to repositioning of heterochromatin to the nuclear interior, changes in chromatin accessibility, deregulation of gene expression including activation of antiviral innate immunity, and defects in cell fate determination.
+
+# Nomenclature
+
+The following names from the manuscript are used interchangeably in the code:
+
+- `DKO`: `HCT116_LBR_TMPO_KO_HLTd3`
+- `TKO`: `HCT116_LBR_TMPO_LMNA_KO_HLTLad5`
+
+where `_HLTd3` and `_HLTLad5` are the clone numbers for our lab's internal use.
 
 # Reference genomes and annotations
 The reference genomes for human ([GRCh38](https://ftp.ensembl.org/pub/release-108/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz); [annotation version 108](https://ftp.ensembl.org/pub/release-108/gtf/homo_sapiens/Homo_sapiens.GRCh38.108.gtf.gz)) and mouse ([GRCm39](https://ftp.ensembl.org/pub/release-112/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna.primary_assembly.fa.gz); [annotation version 112](https://ftp.ensembl.org/pub/release-108/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz)) were obtained from ENSEMBL.
