@@ -1,0 +1,247 @@
+---
+title: "Figure 5C"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+LFC <- 1
+
+dag_lad_file_suffix <- paste("_LFC2_nfr_peaks_intersect_consensus_laminB1.bed", sep = "")
+
+all_dag_file_suffix <- paste("_LFC", as.character(LFC), "_DESeq2_apeglm_res.csv", sep = "")
+in_dir <- "../data/figure_5a_5b_5c/"
+```
+
+# Function
+
+```{r}
+# Read files
+make_count_df <- function(sample_name) {
+  # DEGs that overlap with LADs
+  dags_in_lads <- read_tsv(
+    paste(in_dir, sample_name, "/", sample_name, dag_lad_file_suffix, sep = ""),
+    col_names = c(
+      "peak_chr", "peak_start", "peak_end", "gene_id", "score", "strand",
+      "chr_pADamID_lamin", "start_pADamID_lamin", "end_pADamID_lamin"
+    )
+  ) |>
+    mutate(
+      tmp_peak_id = paste(peak_chr, peak_start, peak_end, sep = "_"),
+      lamin = "Lamin_B1",
+      lad_status = "LAD"
+    ) |>
+    select(
+      tmp_peak_id, lamin, lad_status
+    )
+
+  # All DEGs
+  all_peaks <- read_csv(
+    paste(in_dir, sample_name, "/", sample_name, all_dag_file_suffix, sep = "")
+  ) |>
+    mutate(
+      tmp_peak_id = paste(peak_chr, peak_start, peak_end, sep = "_"),
+    )
+
+  # Merge
+  merged_df <- full_join(all_peaks, dags_in_lads,
+    by = "tmp_peak_id"
+  ) |>
+    mutate(
+      lad_status = replace_na(lad_status, "Inter_LAD"),
+      lamin = replace_na(lamin, "Inter-lamin_B1")
+    )
+
+  # Count
+  count_df <- merged_df |>
+    count(
+      lamin, lad_status, accessibility,
+      name = "num_genes"
+    ) |>
+    mutate(
+      genotype = sample_name |> str_remove("_vs_HCT116_WT")
+    )
+}
+```
+
+# Data
+
+```{r}
+sample_names <- c(
+  "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+)
+
+
+combined_df <- map(sample_names, make_count_df) |>
+  list_rbind()
+```
+
+```{r}
+head(combined_df)
+```
+
+```{r}
+# Factors
+combined_df$accessibility <- factor(
+  combined_df$accessibility,
+  levels = c(
+    "Increased",
+    "Unchanged",
+    "Decreased"
+  )
+)
+
+combined_df$genotype <- factor(
+  combined_df$genotype,
+  levels = c(
+    "HCT116_LBR_TMPO_KO_HLTd3",
+    "HCT116_LBR_TMPO_LMNA_KO_HLTLad5"
+  )
+)
+```
+
+# Plot
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+# Plot
+custom_col <- c(
+  "Increased" = "#404788FF",
+  "Unchanged" = "#999999",
+  "Decreased" = "#73D055FF"
+)
+
+plt <- ggplot(
+  combined_df,
+  aes(
+    x = genotype,
+    y = num_genes,
+    fill = accessibility
+  )
+) +
+  geom_bar(
+    position = "fill",
+    stat = "identity"
+  ) +
+  scale_fill_manual(values = custom_col) +
+  geom_text(
+    aes(
+      x = genotype,
+      y = num_genes,
+      label = num_genes
+    ),
+    stat = "identity",
+    position = position_fill(vjust = 0.5),
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "Fraction of genes",
+    fill = "Accessibility"
+  ) +
+  facet_wrap(
+    ~lad_status
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  )
+
+plt
+```
+
+
+# Statistical test
+
+- `m`: Genes IN term of interest
+- `n`: Genes NOT IN term of interest
+- `k`: Gene hits, that is, differentially expressed
+- `x`: Genes both IN GO term and differentially expressed 'hits'
+
+```{r}
+perform_fisher_test <- function(sample_name) {
+  df <- combined_df |>
+    filter(
+      genotype == sample_name |> str_remove("_vs_HCT116_WT")
+    )
+
+  mn_val <- df |>
+    group_by(lad_status) |>
+    summarise(
+      num_genes = sum(num_genes)
+    )
+
+  m_val <- mn_val |>
+    filter(
+      lad_status == "LAD"
+    ) |>
+    pull(num_genes)
+
+  n_val <- mn_val |>
+    filter(
+      lad_status == "Inter_LAD"
+    ) |>
+    pull(num_genes)
+
+  k_val <- df |>
+    group_by(accessibility) |>
+    summarise(
+      num_genes = sum(num_genes)
+    ) |>
+    filter(
+      accessibility == "Increased"
+    ) |>
+    pull(num_genes)
+
+  x_val <- df |>
+    filter(
+      (lad_status == "LAD") & (accessibility == "Increased")
+    ) |>
+    pull(num_genes)
+
+  print(paste0("m_val: ", m_val))
+  print(paste0("n_val: ", n_val))
+  print(paste0("k_val: ", k_val))
+  print(paste0("x_val: ", x_val))
+
+  p_val <- dhyper(
+    m = m_val,
+    n = n_val,
+    k = k_val,
+    x = x_val,
+    log = FALSE
+  )
+
+  print(paste0(sample_name, " ", p_val))
+
+  p_val
+}
+
+map(sample_names, perform_fisher_test)
+```
+
+
+```{r}
+sessionInfo()
+```
