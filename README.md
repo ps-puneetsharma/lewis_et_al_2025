@@ -32,6 +32,8 @@ The modules in the codes below refers to [applications and libraries](https://sc
 
 # Requirements
 
+- Python
+- R
 - STAR
 - Bowtie2
 - Samtools
@@ -40,9 +42,8 @@ The modules in the codes below refers to [applications and libraries](https://sc
 - Bedtools
 - Sambamba
 - MACS3
-- R
 
-R libraies:
+R libraries:
 - Tidyverse
 - DESeq2
 

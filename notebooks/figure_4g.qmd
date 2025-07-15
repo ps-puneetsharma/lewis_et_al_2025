@@ -1,0 +1,134 @@
+---
+title: "Figure 4G"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Library
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+```
+
+
+# Function
+
+```{r}
+extract_te <- function(clone_name) {
+  in_dir <- "../data/figure_4g/"
+  in_file <- paste(clone_name, "_LFC0.585_NO_te_class_agg_DESeq2_apeglm_res.csv", sep = "")
+
+  df <- read_csv(paste(in_dir, clone_name, "/", in_file, sep = ""))
+
+  tmp_df <- df |>
+    mutate(
+      genotype = clone_name
+    ) |>
+    filter(
+      str_detect(gene_id, "ENSG", negate = TRUE),
+      te_class %in% c(
+        "Satellite", "SINE", "DNA", "LINE", "LTR"
+      )
+    ) |>
+    na.omit()
+
+  tmp_df
+}
+```
+
+# Data
+
+```{r}
+sample_list <- c(
+  "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+)
+
+te_df <- map(sample_list, extract_te) |>
+  list_rbind() |>
+  mutate(
+    genotype = str_remove_all(genotype, "_vs_HCT116_WT")
+  )
+```
+
+```{r}
+head(te_df)
+```
+
+```{r}
+filtered_df <- te_df |>
+  filter(
+    abs(log2FoldChange) > 0.585 & padj < 0.05
+  )
+```
+
+# Plot
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+te_colors <- c(
+  "DNA" = "#1b9e77",
+  "LTR" = "#7570b3",
+  "LINE" = "#e7298a",
+  "SINE" = "#66a61e",
+  "Satellite" = "#e6ab02"
+)
+
+# Plot
+plt <- ggplot(
+  te_df,
+  aes(
+    x = log2FoldChange,
+    y = -log10(padj),
+    color = te_class
+  )
+) +
+  geom_point(
+    size = 1,
+    alpha = 0.75
+  ) +
+  geom_text_repel(
+    data = filtered_df,
+    aes(label = gene_id),
+    size = 2,
+    box.padding = 0.5,
+    max.overlaps = 30,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(values = te_colors) +
+  geom_hline(yintercept = 1.301, linetype = "dotted", col = "#2c3e50") +
+  geom_vline(xintercept = c(-0.585, 0.585), linetype = "dotted", col = "#2c3e50") +
+  labs(
+    x = "Log2 fold change",
+    y = "- Log10(padj)",
+    color = "TE class"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 12)
+  ) +
+  facet_wrap(
+    ~genotype,
+    nrow = 1,
+    scales = "free_y"
+  )
+
+
+
+plt
+```
+
+
+```{r}
+sessionInfo()
+```
