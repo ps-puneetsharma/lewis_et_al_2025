@@ -1,0 +1,239 @@
+---
+title: "Figure 6C"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+chip_dir <- "../data/figure_6b_and_6c/"
+mod_name <- "h3k27me3"
+```
+
+
+# Function
+
+```{r}
+process_sample <- function(comp_name) {
+  all_chip_df <- read_csv(
+    paste0(chip_dir, comp_name, "/hct116_", comp_name, "_", mod_name, "_ens_canon_promoter_only.csv")
+  ) |>
+    mutate(
+      db_status = case_when(
+        (logFC >= 1 & FDR <= 0.05) ~ "increased",
+        (logFC <= -1 & FDR <= 0.05) ~ "decreased",
+        .default = "unchanged"
+      )
+    )
+
+  lads_chip_df <- read_tsv(
+    paste0(chip_dir, comp_name, "/hct116_", comp_name, "_h3k27me3_ens_canon_prot_cod_promoter_intersect_consensus_laminB1.bed"),
+    col_names = c(
+      "peak_chr", "peak_start", "peak_end", "peak_id", "score", "strand",
+      "chr_pADamID_lamin", "start_pADamID_lamin", "end_pADamID_lamin"
+    )
+  ) |>
+    mutate(
+      lamin = "Lamin_B1",
+      lad_status = "LAD"
+    ) |>
+    select(
+      peak_id, lamin, lad_status
+    )
+
+  merged_df <- full_join(
+    all_chip_df, lads_chip_df,
+    by = "peak_id"
+  ) |>
+    mutate(
+      lad_status = replace_na(lad_status, "Inter_LAD"),
+      lamin = replace_na(lamin, "Inter-lamin_B1")
+    )
+
+  # Count
+  count_df <- merged_df |>
+    count(
+      lamin, lad_status, db_status,
+      name = "num_genes"
+    ) |>
+    mutate(
+      genotype = comp_name |> str_remove("_vs_wt")
+    )
+
+  count_df
+}
+```
+
+# Data
+
+```{r}
+sample_names <- c(
+  "dko_vs_wt",
+  "tko_vs_wt"
+)
+
+
+combined_df <- map(sample_names, process_sample) |>
+  list_rbind()
+
+head(combined_df)
+```
+
+```{r}
+# Factors
+combined_df$db_status <- factor(
+  combined_df$db_status,
+  levels = c(
+    "increased",
+    "unchanged",
+    "decreased"
+  )
+)
+
+combined_df$genotype <- factor(
+  combined_df$genotype,
+  levels = c(
+    "dko",
+    "tko"
+  )
+)
+```
+
+# Plot
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+
+# Plot
+custom_col <- c(
+  "increased" = "#404788FF",
+  "unchanged" = "#999999",
+  "decreased" = "#73D055FF"
+)
+
+plt <- ggplot(
+  combined_df,
+  aes(
+    x = genotype,
+    y = num_genes,
+    fill = db_status
+  )
+) +
+  geom_bar(
+    position = "fill",
+    stat = "identity"
+  ) +
+  scale_fill_manual(values = custom_col) +
+  geom_text(
+    aes(
+      x = genotype,
+      y = num_genes,
+      label = num_genes
+    ),
+    stat = "identity",
+    position = position_fill(vjust = 0.5),
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "Fraction of genes",
+    fill = "H3K27me3 status"
+  ) +
+  facet_wrap(
+    ~lad_status
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14)
+  )
+
+plt
+```
+
+# Statistical test
+
+- `m`: Genes IN term of interest
+- `n`: Genes NOT IN term of interest
+- `k`: Gene hits, that is, differentially expressed
+- `x`: Genes both IN GO term and differentially expressed 'hits'
+
+```{r}
+# sample_name <- "hct116_wt_si11_144h_vs_hct116_wt_ctrl_144h"
+
+perform_fisher_test <- function(sample_name) {
+  df <- combined_df |>
+    filter(
+      genotype == sample_name |> str_remove("_vs_wt")
+    )
+
+  mn_val <- df |>
+    group_by(lad_status) |>
+    summarise(
+      num_genes = sum(num_genes)
+    )
+
+  m_val <- mn_val |>
+    filter(
+      lad_status == "LAD"
+    ) |>
+    pull(num_genes)
+
+  n_val <- mn_val |>
+    filter(
+      lad_status == "Inter_LAD"
+    ) |>
+    pull(num_genes)
+
+  k_val <- df |>
+    group_by(db_status) |>
+    summarise(
+      num_genes = sum(num_genes)
+    ) |>
+    filter(
+      db_status == "decreased"
+    ) |>
+    pull(num_genes)
+
+  x_val <- df |>
+    filter(
+      (lad_status == "LAD") & (db_status == "decreased")
+    ) |>
+    pull(num_genes)
+
+  print(paste0("m_val: ", m_val))
+  print(paste0("n_val: ", n_val))
+  print(paste0("k_val: ", k_val))
+  print(paste0("x_val: ", x_val))
+
+  p_val <- dhyper(
+    m = m_val,
+    n = n_val,
+    k = k_val,
+    x = x_val,
+    log = FALSE
+  )
+
+  print(paste0(sample_name, " ", p_val))
+
+  p_val
+}
+
+map(sample_names, perform_fisher_test)
+```
+
+```{r}
+sessionInfo()
+```
