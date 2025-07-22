@@ -1,5 +1,3 @@
-# Work in progress...
-
 # About
 Workflow and code used in [Lewis R. et al 2025](https://www.biorxiv.org/content/10.1101/2024.12.23.628302v1.full) manuscript
 
@@ -56,6 +54,11 @@ The modules in the codes below refers to [applications and libraries](https://sc
 R libraries:
 - Tidyverse
 - DESeq2
+- eulerr
+- AnnotationHub
+- ensembldb
+- org.Hs.eg.db
+- org.Mm.eg.db
 
 
 # Indexing
