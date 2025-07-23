@@ -177,7 +177,7 @@ plt
 - `m`: Genes IN term of interest
 - `n`: Genes NOT IN term of interest
 - `k`: Gene hits, that is, differentially expressed
-- `x`: Genes both IN GO term and differentially expressed 'hits'
+- `x`: Genes both IN term and differentially expressed 'hits'
 
 ```{r}
 perform_fisher_test <- function(sample_name) {
