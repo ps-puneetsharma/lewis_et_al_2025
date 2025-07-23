@@ -1,0 +1,259 @@
+---
+title: "Supplementary figure 7G"
+author: "Puneet Sharma"
+format:
+  html:
+    toc: true
+    page-layout: full
+    embed-resources: true
+    theme: 
+      dark: Darkly
+      light: Journal
+---
+# Setup
+
+```{r}
+
+library(tidyverse)
+
+```
+
+```{r}
+
+LFC <- 1
+
+
+deg_lad_file_suffix <- paste("_LFC1_all_genes_intersect_B1_to_A.bed", sep = "")
+
+all_deg_file_suffix <- paste("_LFC", as.character(LFC), "_DESeq2_apeglm_res.csv", sep = "")
+in_dir <- "../data/figure_4c_and_4d/"
+bed_dir <- "../data/figure_s7g/"
+
+```
+
+
+# Function
+
+```{r}
+
+# Read files
+make_count_df <- function(sample_name) {
+  
+  # DEGs that overlap with LADs
+  degs_in_lads <- read_tsv(
+    paste(bed_dir, sample_name, deg_lad_file_suffix, sep = ""),
+    col_names = c(
+      "chr", "start", "end", "gene_id",
+      "chr_pADamID_lamin", "start_pADamID_lamin", "end_pADamID_lamin"
+      )
+  ) |> 
+    distinct(gene_id, .keep_all = TRUE) |> 
+  mutate(
+    comp_status = "B1_to_A"
+  ) |> 
+    select(
+      gene_id, comp_status
+    )
+  
+  # All DEGs
+  all_degs <- read_csv(paste(in_dir, sample_name, "/", sample_name, all_deg_file_suffix, sep = ""))
+  
+  # Merge
+  merged_df <- full_join(all_degs, degs_in_lads,
+                         by = "gene_id") |> 
+    mutate(
+      comp_status = replace_na(comp_status, "Background")
+    )
+  
+  # Count
+  count_df <- merged_df |> 
+    count(
+      comp_status, regulation_level, name = "num_genes"
+    ) |> 
+    mutate(
+      genotype = sample_name |> str_remove("_vs_HCT116_WT")
+    )
+  
+  
+  
+}
+
+```
+
+# Data
+
+```{r}
+
+sample_names <- c(
+  "HCT116_LBR_TMPO_KO_HLTd3_vs_HCT116_WT",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5_vs_HCT116_WT"
+)
+
+
+combined_df <- map(sample_names, make_count_df) |> 
+  list_rbind()
+
+```
+
+```{r}
+
+head(combined_df)
+
+```
+
+```{r}
+
+# Factors
+combined_df$regulation_level <- factor(
+  combined_df$regulation_level,
+  levels = c(
+    "Upregulated",
+    "Unchanged",
+    "Downregulated"
+  )
+)
+
+combined_df$genotype <- factor(
+  combined_df$genotype,
+  levels = c(
+  "HCT116_LBR_TMPO_KO_HLTd3",
+  "HCT116_LBR_TMPO_LMNA_KO_HLTLad5"
+  )
+)
+
+
+```
+
+# Plot
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+
+# Plot
+custom_col <- c(
+  "Upregulated" = "#404788FF",
+  "Unchanged" = "#999999",
+  "Downregulated" = "#73D055FF"
+)
+
+plt <- ggplot(combined_df,
+              aes(x = genotype,
+                  y = num_genes,
+                  fill = regulation_level)) +
+  geom_bar(
+    position = "fill",
+    stat = "identity"
+  ) +
+  scale_fill_manual(values = custom_col) +
+  geom_text(
+    aes(x = genotype,
+        y = num_genes,
+        label = num_genes),
+    stat = "identity",
+    position = position_fill(vjust = 0.5),
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "Fraction of genes",
+    fill = "Regulation \nlevel"
+  ) +
+  facet_wrap(
+    ~ comp_status
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  )
+
+plt
+
+```
+
+# Statistical test
+
+- `m`: Genes IN term of interest
+- `n`: Genes NOT IN term of interest
+- `k`: Gene hits, that is, differentially expressed
+- `x`: Genes both IN term and differentially expressed 'hits'
+
+```{r}
+
+# sample_name <- "hct116_wt_si11_144h_vs_hct116_wt_ctrl_144h"
+
+perform_fisher_test <- function(sample_name) {
+  
+  df <- combined_df |> 
+    filter(
+      genotype == sample_name |> str_remove("_vs_HCT116_WT")
+    )
+  
+  mn_val <- df |> 
+    group_by(comp_status) |> 
+    summarise(
+      num_genes = sum(num_genes)
+    )
+  
+  m_val <- mn_val |> 
+    filter(
+      comp_status == "B1_to_A"
+    ) |> 
+    pull(num_genes)
+  
+  n_val <- mn_val |> 
+    filter(
+      comp_status == "Background"
+    ) |> 
+    pull(num_genes)
+  
+  k_val <- df |> 
+    group_by(regulation_level) |> 
+    summarise(
+      num_genes = sum(num_genes)
+    ) |> 
+    filter(
+      regulation_level == "Upregulated"
+    ) |> 
+    pull(num_genes)
+  
+  x_val <- df |> 
+    filter(
+      (comp_status == "B1_to_A") & (regulation_level == "Upregulated")
+    ) |> 
+    pull(num_genes)
+  
+  print(paste0("m_val: ", m_val))
+  print(paste0("n_val: ", n_val))
+  print(paste0("k_val: ", k_val))
+  print(paste0("x_val: ", x_val))
+  
+  p_val <- dhyper(
+    m = m_val,
+    n = n_val,
+    k = k_val,
+    x = x_val,
+    log = FALSE
+    )
+  
+  print(paste0(sample_name, " ", p_val))
+  
+  p_val
+  
+}
+
+map(sample_names, perform_fisher_test)
+
+```
+
+```{r}
+
+sessionInfo()
+
+```
+
